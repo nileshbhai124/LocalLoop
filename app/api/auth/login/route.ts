@@ -1,13 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { connectDB } from '@/lib/db';
-import User from '@/lib/models/User';
-import bcrypt from 'bcryptjs';
-import jwt from 'jsonwebtoken';
+
+// Demo credentials
+const DEMO_USER = {
+  id: 'demo_user_1',
+  name: 'Demo User',
+  email: 'demo@localloop.com',
+  password: 'demo123',
+  phone: '+91 98765 43210',
+  address: 'Mumbai, Maharashtra',
+  role: 'user',
+  avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=100&h=100&fit=crop'
+};
 
 export async function POST(request: NextRequest) {
   try {
-    await connectDB();
-    
     const { email, password } = await request.json();
 
     if (!email || !password) {
@@ -17,69 +23,35 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Find user
-    const user = await User.findOne({ email: email.toLowerCase() });
-    if (!user) {
-      return NextResponse.json(
-        { message: 'Invalid credentials' },
-        { status: 401 }
-      );
+    // Check demo credentials
+    if (email.toLowerCase() === DEMO_USER.email && password === DEMO_USER.password) {
+      const token = `mock_token_${DEMO_USER.id}`;
+
+      return NextResponse.json({
+        message: 'Login successful (Demo Mode)',
+        token,
+        user: {
+          id: DEMO_USER.id,
+          name: DEMO_USER.name,
+          email: DEMO_USER.email,
+          phone: DEMO_USER.phone,
+          address: DEMO_USER.address,
+          role: DEMO_USER.role,
+          avatar: DEMO_USER.avatar,
+        },
+        demo: true,
+        demoNote: 'Use email: demo@localloop.com, password: demo123'
+      });
     }
 
-    // Check if account is locked
-    if (user.accountLocked && user.lockUntil && user.lockUntil > new Date()) {
-      return NextResponse.json(
-        { message: 'Account is locked. Please try again later.' },
-        { status: 423 }
-      );
-    }
-
-    // Verify password
-    const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) {
-      // Increment failed login attempts
-      user.failedLoginAttempts = (user.failedLoginAttempts || 0) + 1;
-      
-      if (user.failedLoginAttempts >= 5) {
-        user.accountLocked = true;
-        user.lockUntil = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
-      }
-      
-      await user.save();
-      
-      return NextResponse.json(
-        { message: 'Invalid credentials' },
-        { status: 401 }
-      );
-    }
-
-    // Reset failed attempts on successful login
-    user.failedLoginAttempts = 0;
-    user.accountLocked = false;
-    user.lockUntil = undefined;
-    user.lastLogin = new Date();
-    await user.save();
-
-    // Generate JWT token
-    const token = jwt.sign(
-      { userId: user._id, email: user.email, role: user.role },
-      process.env.JWT_SECRET || 'your-secret-key',
-      { expiresIn: '7d' }
-    );
-
-    return NextResponse.json({
-      message: 'Login successful',
-      token,
-      user: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        phone: user.phone,
-        address: user.address,
-        role: user.role,
-        avatar: user.avatar,
+    // Invalid credentials
+    return NextResponse.json(
+      { 
+        message: 'Invalid credentials. Try demo account: demo@localloop.com / demo123',
+        demo: true 
       },
-    });
+      { status: 401 }
+    );
 
   } catch (error: any) {
     console.error('Login error:', error);

@@ -1,11 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { connectDB } from '@/lib/db';
-import Item from '@/lib/models/Item';
+import { mockItems } from '@/lib/mockData';
 
 export async function GET(request: NextRequest) {
   try {
-    await connectDB();
-    
     const { searchParams } = new URL(request.url);
     const category = searchParams.get('category');
     const search = searchParams.get('search');
@@ -15,35 +12,45 @@ export async function GET(request: NextRequest) {
     const page = parseInt(searchParams.get('page') || '1');
     const limit = parseInt(searchParams.get('limit') || '20');
 
-    // Build query
-    const query: any = { availability: true };
+    // Filter items
+    let filteredItems = [...mockItems];
 
     if (category && category !== 'All') {
-      query.category = category;
+      filteredItems = filteredItems.filter(item => item.category === category);
     }
 
     if (search) {
-      query.$text = { $search: search };
+      const searchLower = search.toLowerCase();
+      filteredItems = filteredItems.filter(item => 
+        item.title.toLowerCase().includes(searchLower) ||
+        item.description.toLowerCase().includes(searchLower)
+      );
     }
 
-    if (minPrice || maxPrice) {
-      query.pricePerDay = {};
-      if (minPrice) query.pricePerDay.$gte = parseFloat(minPrice);
-      if (maxPrice) query.pricePerDay.$lte = parseFloat(maxPrice);
+    if (minPrice) {
+      filteredItems = filteredItems.filter(item => item.pricePerDay >= parseFloat(minPrice));
     }
 
-    // Execute query
-    const items = await Item.find(query)
-      .populate('owner', 'name avatar rating')
-      .sort(sort)
-      .skip((page - 1) * limit)
-      .limit(limit)
-      .lean();
+    if (maxPrice) {
+      filteredItems = filteredItems.filter(item => item.pricePerDay <= parseFloat(maxPrice));
+    }
 
-    const total = await Item.countDocuments(query);
+    // Sort items
+    if (sort === 'pricePerDay') {
+      filteredItems.sort((a, b) => a.pricePerDay - b.pricePerDay);
+    } else if (sort === '-pricePerDay') {
+      filteredItems.sort((a, b) => b.pricePerDay - a.pricePerDay);
+    } else if (sort === 'rating') {
+      filteredItems.sort((a, b) => b.rating - a.rating);
+    }
+
+    // Paginate
+    const total = filteredItems.length;
+    const startIndex = (page - 1) * limit;
+    const paginatedItems = filteredItems.slice(startIndex, startIndex + limit);
 
     return NextResponse.json({
-      items,
+      items: paginatedItems,
       pagination: {
         page,
         limit,
@@ -63,29 +70,10 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    await connectDB();
-    
-    const token = request.headers.get('authorization')?.replace('Bearer ', '');
-    if (!token) {
-      return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
-    }
-
-    // Verify token and get user (you'll need to implement this)
-    const jwt = require('jsonwebtoken');
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    
-    const itemData = await request.json();
-    
-    const item = await Item.create({
-      ...itemData,
-      owner: decoded.userId
-    });
-
     return NextResponse.json({
-      message: 'Item created successfully',
-      item
-    }, { status: 201 });
-
+      message: 'Item creation is disabled in demo mode. Connect MongoDB to enable.',
+      demo: true
+    }, { status: 503 });
   } catch (error: any) {
     console.error('Create item error:', error);
     return NextResponse.json(
